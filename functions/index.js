@@ -1,23 +1,44 @@
 const functions = require("firebase-functions");
 const express = require("express");
 const { google } = require("googleapis");
-const env = require("./env.json");
 const cors = require("cors");
+const fs = require("fs");
+
+// Cargar credenciales del archivo JSON descargado
+const credentials = JSON.parse(fs.readFileSync("service-account-key.json"));
 
 const app = express();
 app.use(cors({ origin: true }));
 
-// Configura las credenciales de Google usando el archivo env.json
+// Configurar autenticación con las credenciales de la cuenta de servicio
 const auth = new google.auth.GoogleAuth({
   credentials: {
-    client_email: env.google.client_email,
-    private_key: env.google.private_key.replace(/\\n/g, "\n"),
+    client_email: credentials.client_email,
+    private_key: credentials.private_key.replace(/\\n/g, "\n"),
   },
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
 // ID de tu hoja de Google Sheets
 const spreadsheetId = "1b3wUkfYsC0afHkPNxIP_05kkD005K-IXhzTS3zZnEgo";
+
+// Ruta para obtener datos de Google Sheets
+app.get("/get", async (req, res) => {
+  try {
+    const authClient = await auth.getClient();
+    const sheets = google.sheets({ version: "v4", auth: authClient });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: spreadsheetId,
+      range: "HOLD USRAP!A:CY",
+    });
+
+    res.status(200).send(response.data.values);
+  } catch (error) {
+    console.error("Error al obtener datos de Google Sheets:", error);
+    res.status(500).send("Error al obtener los datos");
+  }
+});
 
 // Ruta para actualizar Google Sheets
 app.post("/", async (req, res) => {

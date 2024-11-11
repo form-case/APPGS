@@ -1,24 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 
 const App = () => {
   const [data, setData] = useState([]); // Estado para almacenar los datos de la hoja
   const [selectedPerson, setSelectedPerson] = useState(null); // Persona seleccionada
+  const [isNewRecord, setIsNewRecord] = useState(false); // Indica si se está creando un nuevo registro
 
-  // ID de la hoja de Google y API key (reemplázalas con las tuyas)
-  const sheetID = '1b3wUkfYsC0afHkPNxIP_05kkD005K-IXhzTS3zZnEgo';
-  const apiKey = 'AIzaSyBSQIMuFV5BObLIvxX0SVIFkopb-CwR5AA';
-  const range = 'HOLD USRAP!A:CY';
+  // URL de la función de Firebase
+  const functionUrl = 'https://updategooglesheet-twmzk5phsa-uc.a.run.app';
 
-  // URL de la API de Google Sheets
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetID}/values/${range}?key=${apiKey}`;
-
-  // Función para cargar los datos de Google Sheets
+  // Función para cargar los datos de Google Sheets desde Firebase Function
   useEffect(() => {
-    axios
-      .get(url)
-      .then((response) => {
-        const [headers, ...rows] = response.data.values;
+    fetch(`${functionUrl}/get`)
+      .then((response) => response.json())
+      .then((data) => {
+        const [headers, ...rows] = data;
         // Convertir los datos a un formato de objetos con encabezados
         const formattedData = rows.map((row) =>
           headers.reduce((acc, header, index) => {
@@ -29,7 +24,7 @@ const App = () => {
         setData(formattedData);
       })
       .catch((error) => console.error('Error fetching data: ', error));
-  }, [url]);
+  }, [functionUrl]);
 
   // Función para manejar los cambios en los inputs de detalles del caso
   const handleInputChange = (field, value) => {
@@ -41,25 +36,26 @@ const App = () => {
   // Función para guardar cambios en Google Sheets
   const handleSaveChanges = async () => {
     try {
-      const updatedData = data.map((row) =>
-        row.CODE === selectedPerson.CODE ? selectedPerson : row
-      );
+      const updatedData = isNewRecord
+        ? [...data, selectedPerson]
+        : data.map((row) =>
+            row.CODE === selectedPerson.CODE ? selectedPerson : row
+          );
 
-      const response = await fetch(
-        'https://updategooglesheet-twmzk5phsa-uc.a.run.app',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            data: updatedData.map((row) => Object.values(row)),
-          }),
-        }
-      );
+      const response = await fetch(`${functionUrl}/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: updatedData.map((row) => Object.values(row)),
+        }),
+      });
 
       if (response.ok) {
         alert('Cambios guardados en Google Sheets');
+        setData(updatedData);
+        setIsNewRecord(false); // Deja de ser un nuevo registro una vez que se guarda
       } else {
         alert('Hubo un error al guardar los datos');
       }
@@ -69,12 +65,31 @@ const App = () => {
     }
   };
 
+  // Función para iniciar un nuevo registro
+  const handleNewRecord = () => {
+    const newRecord = {};
+    Object.keys(data[0] || {}).forEach((key) => {
+      newRecord[key] = '';
+    });
+    setSelectedPerson(newRecord);
+    setIsNewRecord(true);
+  };
+
   // Renderizar la galería de casos y los detalles
   return (
     <div style={{ display: 'flex' }}>
       {/* Galería de Casos */}
-      <div style={{ width: '30%', padding: '10px', borderRight: '1px solid #ccc' }}>
+      <div
+        style={{
+          width: '30%',
+          padding: '10px',
+          borderRight: '1px solid #ccc',
+        }}
+      >
         <h2>Casos</h2>
+        <button onClick={handleNewRecord} style={{ marginBottom: '10px' }}>
+          Nuevo Registro
+        </button>
         <ul style={{ listStyleType: 'none', padding: 0 }}>
           {data.map((person, index) => (
             <li
@@ -82,9 +97,13 @@ const App = () => {
               style={{
                 padding: '10px',
                 cursor: 'pointer',
-                backgroundColor: selectedPerson?.CODE === person.CODE ? '#f0f0f0' : 'transparent',
+                backgroundColor:
+                  selectedPerson?.CODE === person.CODE ? '#f0f0f0' : 'transparent',
               }}
-              onClick={() => setSelectedPerson(person)}
+              onClick={() => {
+                setSelectedPerson(person);
+                setIsNewRecord(false);
+              }}
             >
               {person.CODE} - {person.NAME}
             </li>
@@ -96,7 +115,12 @@ const App = () => {
       <div style={{ width: '70%', padding: '10px' }}>
         {selectedPerson ? (
           <>
-            <h2>Detalles del Caso: {selectedPerson.CODE}</h2>
+            <div style={{ marginBottom: '20px' }}>
+              <button onClick={handleSaveChanges}>Guardar Cambios</button>
+            </div>
+            <h2>
+              {isNewRecord ? 'Nuevo Registro' : `Detalles del Caso: ${selectedPerson.CODE}`}
+            </h2>
             {Object.keys(selectedPerson).map((key) => (
               <div key={key} style={{ marginBottom: '10px' }}>
                 <label style={{ marginRight: '10px' }}>{key}</label>
@@ -108,10 +132,9 @@ const App = () => {
                 />
               </div>
             ))}
-            <button onClick={handleSaveChanges}>Guardar Cambios</button>
           </>
         ) : (
-          <p>Selecciona un caso para ver los detalles</p>
+          <p>Selecciona un caso para ver los detalles o crea un nuevo registro.</p>
         )}
       </div>
     </div>
