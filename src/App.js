@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 
 const App = () => {
-  const [data, setData] = useState([]); // Estado para almacenar los datos de la hoja
+  const [data, setData] = useState([]); // Estado para almacenar los datos de la hoja principal
+  const [followData, setFollowData] = useState([]); // Estado para almacenar los datos de seguimiento
   const [selectedPerson, setSelectedPerson] = useState(null); // Persona seleccionada
   const [isNewRecord, setIsNewRecord] = useState(false); // Indica si se está creando un nuevo registro
+  const [newFollowRecord, setNewFollowRecord] = useState({}); // Registro de seguimiento nuevo
+  const [followHeaders, setFollowHeaders] = useState([]); // Encabezados de seguimiento
 
   // URL de la función de Firebase
   const functionUrl = 'https://updategooglesheet-twmzk5phsa-uc.a.run.app';
@@ -26,11 +29,34 @@ const App = () => {
       .catch((error) => console.error('Error fetching data: ', error));
   }, [functionUrl]);
 
+  // Función para cargar los datos de seguimiento
+  const loadFollowData = (caseCode) => {
+    fetch(`${functionUrl}/getFollow?caseCode=${caseCode}`)
+      .then((response) => response.json())
+      .then((data) => {
+        const [headers, ...rows] = data;
+        setFollowHeaders(headers); // Guardar los encabezados
+        const formattedData = rows.map((row) =>
+          headers.reduce((acc, header, index) => {
+            acc[header] = row[index] || '';
+            return acc;
+          }, {})
+        );
+        setFollowData(formattedData);
+      })
+      .catch((error) => console.error('Error fetching follow data: ', error));
+  };
+
   // Función para manejar los cambios en los inputs de detalles del caso
   const handleInputChange = (field, value) => {
     if (selectedPerson) {
       setSelectedPerson({ ...selectedPerson, [field]: value });
     }
+  };
+
+  // Función para manejar los cambios en los inputs de seguimiento
+  const handleFollowInputChange = (field, value) => {
+    setNewFollowRecord({ ...newFollowRecord, [field]: value });
   };
 
   // Función para guardar cambios en Google Sheets
@@ -62,6 +88,33 @@ const App = () => {
     } catch (error) {
       console.error('Error al guardar los cambios:', error);
       alert('Hubo un error al intentar guardar los datos');
+    }
+  };
+
+  // Función para guardar un nuevo seguimiento
+  const handleSaveFollowRecord = async () => {
+    try {
+      const response = await fetch(`${functionUrl}/addFollow`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          caseCode: selectedPerson.CODE,
+          followData: followHeaders.map((header) => newFollowRecord[header] || ''),
+        }),
+      });
+
+      if (response.ok) {
+        alert('Seguimiento guardado en Google Sheets');
+        loadFollowData(selectedPerson.CODE); // Recargar los seguimientos
+        setNewFollowRecord({}); // Limpiar el formulario de seguimiento
+      } else {
+        alert('Hubo un error al guardar el seguimiento');
+      }
+    } catch (error) {
+      console.error('Error al guardar el seguimiento:', error);
+      alert('Hubo un error al intentar guardar el seguimiento');
     }
   };
 
@@ -103,6 +156,7 @@ const App = () => {
               onClick={() => {
                 setSelectedPerson(person);
                 setIsNewRecord(false);
+                loadFollowData(person.CODE); // Cargar datos de seguimiento
               }}
             >
               {person.CODE} - {person.NAME}
@@ -132,6 +186,35 @@ const App = () => {
                 />
               </div>
             ))}
+
+            {/* Formulario de Seguimiento */}
+            <div style={{ marginTop: '30px' }}>
+              <h3>Seguimientos del Caso</h3>
+              {followData.map((follow, index) => (
+                <div key={index} style={{ marginBottom: '10px' }}>
+                  {Object.keys(follow).map((key) => (
+                    <div key={key}>
+                      <strong>{key}:</strong> {follow[key]}
+                    </div>
+                  ))}
+                  <hr />
+                </div>
+              ))}
+
+              <h4>Nuevo Seguimiento</h4>
+              {followHeaders.map((header) => (
+                <div key={header} style={{ marginBottom: '10px' }}>
+                  <label style={{ marginRight: '10px' }}>{header}</label>
+                  <input
+                    type="text"
+                    value={newFollowRecord[header] || ''}
+                    onChange={(e) => handleFollowInputChange(header, e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              ))}
+              <button onClick={handleSaveFollowRecord}>Guardar Seguimiento</button>
+            </div>
           </>
         ) : (
           <p>Selecciona un caso para ver los detalles o crea un nuevo registro.</p>
